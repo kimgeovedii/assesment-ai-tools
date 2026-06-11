@@ -1,4 +1,4 @@
-# Redis - AI-Powered Exam Assistant
+# ExAI - AI-Powered Exam Assistant
 
 > Lightweight stealth desktop tool yang membantu menjawab soal ujian pilihan ganda secara real-time menggunakan AI (Gemini / OpenAI).
 
@@ -36,7 +36,7 @@
 
 1. Buka halaman [Releases](https://github.com/kimgeovedii/assesment-ai-tools/releases)
 2. Download **2 file** berikut:
-   - `Redis.exe` — Aplikasi utama
+   - `ExAI.exe` — Aplikasi utama
    - `15.ico` — Icon aplikasi
 3. Taruh kedua file dalam **1 folder yang sama**
 4. **Buat file `promp_AI.txt`** di folder yang sama — isi dengan system prompt untuk AI (lihat bagian [Membuat Prompt File](#-membuat-prompt-file))
@@ -61,14 +61,14 @@ Hasil build ada di folder `dist/`.
 ### 1. Jalankan Aplikasi
 
 ```
-Redis.exe
+ExAI.exe
 ```
 
-> Pastikan `15.ico` dan `promp_AI.txt` ada di folder yang sama dengan `Redis.exe`.
+> Pastikan `15.ico` dan `promp_AI.txt` ada di folder yang sama dengan `ExAI.exe`.
 
 ### 2. Buat Prompt File
 
-Buat file bernama **`promp_AI.txt`** di folder yang sama dengan `Redis.exe`. File ini berisi instruksi/system prompt untuk AI. Kamu bebas menulis prompt sesuai kebutuhan ujian.
+Buat file bernama **`promp_AI.txt`** di folder yang sama dengan `ExAI.exe`. File ini berisi instruksi/system prompt untuk AI. Kamu bebas menulis prompt sesuai kebutuhan ujian.
 
 **Contoh isi `promp_AI.txt`:**
 ```
@@ -116,6 +116,8 @@ Reason:
 ### 3. Setup Pertama Kali
 
 Saat pertama kali dijalankan, **Setup Dialog** akan muncul:
+
+![Setup Dialog](image.png)
 
 - **Pilih AI Provider**: Gemini (Google) atau OpenAI
 - **Masukkan API Key**: Dapatkan dari [Google AI Studio](https://aistudio.google.com/apikey) atau [OpenAI Platform](https://platform.openai.com/api-keys)
@@ -217,7 +219,7 @@ Konfigurasi disimpan di `config.json` (dibuat otomatis setelah setup):
 
 ## 🛑 Windows SmartScreen Warning
 
-Saat pertama kali menjalankan `Redis.exe`, kamu mungkin melihat peringatan seperti ini:
+Saat pertama kali menjalankan `ExAI.exe`, kamu mungkin melihat peringatan seperti ini:
 
 ![Windows SmartScreen Warning](smartscreen_warning.png)
 
