@@ -6,27 +6,27 @@
 
 ## 🔥 Features
 
-| Feature | Detail |
-|---------|--------|
-| **Dual AI Provider** | Support **Google Gemini** dan **OpenAI** — pilih sesuai kebutuhan |
-| **Setup Dialog** | GUI setup saat pertama kali — input API key tanpa edit file config manual |
-| **Stealth Mode** | Popup & snip overlay **invisible** dari screen capture, screen recording, dan screen sharing |
-| **Anti-Capture** | Menggunakan Windows `SetWindowDisplayAffinity (WDA_EXCLUDEFROMCAPTURE)` API |
-| **Rate Limiter** | Otomatis membatasi request agar tidak melebihi batas free tier API |
-| **Compact Popup** | Popup kecil, transparan, muncul di pojok kanan bawah — tidak mengganggu |
-| **Confidence Indicator** | Menampilkan level kepercayaan AI: 😎 High, 🤔 Medium, 😨 Low |
-| **System Tray** | Berjalan di background sebagai tray icon — tidak terlihat di taskbar |
-| **Hotkey Support** | Semua operasi via keyboard shortcut |
+| Feature                  | Detail                                                                                       |
+| ------------------------ | -------------------------------------------------------------------------------------------- |
+| **Dual AI Provider**     | Support **Google Gemini** dan **OpenAI** — pilih sesuai kebutuhan                            |
+| **Setup Dialog**         | GUI setup saat pertama kali — input API key tanpa edit file config manual                    |
+| **Stealth Mode**         | Popup & snip overlay **invisible** dari screen capture, screen recording, dan screen sharing |
+| **Anti-Capture**         | Menggunakan Windows `SetWindowDisplayAffinity (WDA_EXCLUDEFROMCAPTURE)` API                  |
+| **Rate Limiter**         | Otomatis membatasi request agar tidak melebihi batas free tier API                           |
+| **Compact Popup**        | Popup kecil, transparan, muncul di pojok kanan bawah — tidak mengganggu                      |
+| **Confidence Indicator** | Menampilkan level kepercayaan AI: 😎 High, 🤔 Medium, 😨 Low                                 |
+| **System Tray**          | Berjalan di background sebagai tray icon — tidak terlihat di taskbar                         |
+| **Hotkey Support**       | Semua operasi via keyboard shortcut                                                          |
 
 ---
 
 ## ⌨️ Keyboard Shortcuts
 
-| Shortcut | Fungsi |
-|----------|--------|
-| `Ctrl + Alt + S` | Capture area soal (buka snipping tool) |
-| `Ctrl + Alt + H` | Hide/tutup popup jawaban (untuk darurat) |
-| `Delete` | Cancel snipping tool (saat sedang memilih area) |
+| Shortcut         | Fungsi                                          |
+| ---------------- | ----------------------------------------------- |
+| `Ctrl + Alt + S` | Capture area soal (buka snipping tool)          |
+| `Ctrl + Alt + H` | Hide/tutup popup jawaban (untuk darurat)        |
+| `Delete`         | Cancel snipping tool (saat sedang memilih area) |
 
 ---
 
@@ -71,8 +71,9 @@ ExAI.exe
 Buat file bernama **`promp_AI.txt`** di folder yang sama dengan `ExAI.exe`. File ini berisi instruksi/system prompt untuk AI. Kamu bebas menulis prompt sesuai kebutuhan ujian.
 
 **Contoh isi `promp_AI.txt`:**
+
 ```
-You are an expert exam analyst. Analyze the multiple-choice question 
+You are an expert exam analyst. Analyze the multiple-choice question
 shown in the screenshot and determine the MOST CORRECT answer.
 
 IMPORTANT RULES:
@@ -117,7 +118,7 @@ Reason:
 
 Saat pertama kali dijalankan, **Setup Dialog** akan muncul:
 
-![Setup Dialog](image.png)
+![Setup Dialog](exai.png)
 
 - **Pilih AI Provider**: Gemini (Google) atau OpenAI
 - **Masukkan API Key**: Dapatkan dari [Google AI Studio](https://aistudio.google.com/apikey) atau [OpenAI Platform](https://platform.openai.com/api-keys)
@@ -138,6 +139,7 @@ Saat pertama kali dijalankan, **Setup Dialog** akan muncul:
 ### 4. Baca Jawaban
 
 Popup menampilkan:
+
 - ✅ **Jawaban** (A/B/C/D) + level confidence
 - Teks opsi jawaban yang benar
 - Penjelasan singkat mengapa jawaban tersebut benar
@@ -152,14 +154,14 @@ Klik kanan **tray icon** → **Settings** untuk mengubah API key atau provider.
 
 Aplikasi ini dirancang untuk tidak terdeteksi oleh software monitoring:
 
-| Proteksi | Cara Kerja |
-|----------|-----------|
+| Proteksi                          | Cara Kerja                                                                                                 |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------- |
 | **Invisible dari screen capture** | `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)` — popup & overlay tidak tertangkap screenshot/recording |
-| **Invisible dari screen sharing** | Window tidak muncul di Zoom, Google Meet, Teams, dll |
-| **Invisible dari proctoring** | Tidak terdeteksi oleh lockdown browser screen capture |
-| **No taskbar entry** | Hanya muncul di system tray |
-| **Compact & transparent** | Popup kecil (280px), 85% opacity, auto-fade |
-| **Emergency hide** | `Ctrl+Alt+H` untuk langsung menutup popup |
+| **Invisible dari screen sharing** | Window tidak muncul di Zoom, Google Meet, Teams, dll                                                       |
+| **Invisible dari proctoring**     | Tidak terdeteksi oleh lockdown browser screen capture                                                      |
+| **No taskbar entry**              | Hanya muncul di system tray                                                                                |
+| **Compact & transparent**         | Popup kecil (280px), 85% opacity, auto-fade                                                                |
+| **Emergency hide**                | `Ctrl+Alt+H` untuk langsung menutup popup                                                                  |
 
 > **Catatan**: Membutuhkan **Windows 10 versi 2004** (May 2020 Update) atau lebih baru untuk fitur anti-capture.
 
@@ -180,11 +182,11 @@ Konfigurasi disimpan di `config.json` (dibuat otomatis setelah setup):
 }
 ```
 
-| Field | Deskripsi |
-|-------|-----------|
-| `ai_provider` | `"gemini"` atau `"openai"` |
-| `api_key` | API key dari provider |
-| `model` | Model AI (kosong = default) |
+| Field         | Deskripsi                              |
+| ------------- | -------------------------------------- |
+| `ai_provider` | `"gemini"` atau `"openai"`             |
+| `api_key`     | API key dari provider                  |
+| `model`       | Model AI (kosong = default)            |
 | `user_prompt` | Prompt yang dikirim bersama screenshot |
 
 ---
@@ -192,11 +194,13 @@ Konfigurasi disimpan di `config.json` (dibuat otomatis setelah setup):
 ## 📋 Requirements
 
 ### Untuk menjalankan EXE:
+
 - Windows 10/11 (64-bit)
 - Koneksi internet (untuk API call)
 - API key (Gemini atau OpenAI)
 
 ### Untuk build dari source:
+
 - Python 3.10+
 - Dependencies: `mss`, `pystray`, `pillow`, `google-generativeai`, `openai`, `keyboard`, `pyinstaller`
 
@@ -205,6 +209,7 @@ Konfigurasi disimpan di `config.json` (dibuat otomatis setelah setup):
 ## 📝 Changelog
 
 ### v3.0 (Current)
+
 - ✅ Dual AI Provider (Gemini + OpenAI)
 - ✅ Setup Dialog GUI untuk input API key
 - ✅ Anti-capture: invisible dari screen recording & sharing
