@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+*.egg
+.eggs/
+
+# Virtual env
+venv/
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+
+# PyInstaller build cache (bukan hasil akhir)
+build/
+
+# Environment / secrets
+.env
+*.log
+error.log
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Config lokal (berisi API key user)
+config.json
+
+# Prompt file (user buat sendiri)
+promp_AI.txt
+promp_gemini_CEH_V13.txt
