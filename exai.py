@@ -1,6 +1,7 @@
 """
-Eoffice Learning Assistant - System Tray Popup
+ExAI - UKRG 2 Informatika SMA Assistant
 =================================================
+- Menjawab soal Pilihan Ganda (PG) dan Essay
 - Hasil jawaban ditampilkan sebagai popup dekat tray icon
 - Kontrol via klik kanan tray icon (menu)
 - Konfigurasi: config.json (dibuat otomatis)
@@ -8,9 +9,7 @@ Eoffice Learning Assistant - System Tray Popup
 
 Menu Tray:
   Capture Now  - capture sekali sekarang
-  Start Auto   - mulai auto-capture
-  Stop Auto    - hentikan auto-capture
-  Status       - lihat status
+  Settings     - atur AI provider & API key
   Exit         - keluar
 """
 
@@ -44,7 +43,7 @@ CONFIG_PATH = BASE_DIR / "config.json"
 LOG_PATH    = BASE_DIR / "error.log"
 
 APP_TITLE    = "ExAI"
-APP_VERSION  = "3.0"
+APP_VERSION  = "4.0"
 CAPTURE_HOTKEY = "ctrl+alt+s"   # shortcut global untuk capture
 HIDE_HOTKEY    = "ctrl+alt+h"   # shortcut untuk hide/show popup
 
@@ -66,11 +65,13 @@ def _load_prompt_from_file() -> str:
 DEFAULT_CONFIG = {
     "interval_seconds": 10,
     "ai_provider": "",          # "gemini" or "openai" — diisi via setup dialog
-    "api_key": "",              # API key — diisi via setup dialog
+    "api_key": "",              # API key tunggal (legacy, tetap didukung)
+    "api_keys": [],             # Daftar API key — otomatis rotate saat quota habis
     "model": "",                # kosong = auto (pakai default per provider)
     "user_prompt": (
         "Perhatikan screenshot ini. "
-        "Identifikasi soal pilihan ganda CEH v13 yang ada, lalu tentukan jawaban paling tepat."
+        "Identifikasi soal ujian Informatika SMA yang ada (bisa pilihan ganda atau essay). "
+        "Tentukan tipe soal, lalu berikan jawaban paling tepat sesuai format."
     ),
     "auto_start": False
 }
@@ -164,7 +165,7 @@ def _hide_from_capture(tk_win):
 # ---------------------------------------------------------------------------
 # Popup custom (Toplevel) — auto-hide, muncul di pojok kanan bawah
 # ---------------------------------------------------------------------------
-POPUP_DURATION_MS = 15000
+POPUP_DURATION_MS = 20000
 POPUP_FADE_STEPS  = 20
 POPUP_FADE_MS     = 15
 
@@ -191,46 +192,46 @@ def show_popup(_tray_icon, title: str, message: str, duration_ms: int = POPUP_DU
 
             win.overrideredirect(True)
             win.attributes("-topmost", True)
-            win.attributes("-alpha", 0.85)
-            win.configure(bg="#1a1a2e")
+            win.attributes("-alpha", 0.55)  # transparan agar tidak mengganggu layar
+            win.configure(bg="#ffffff")
 
             # Anti-capture: invisible dari recording
             win.update_idletasks()
             _hide_from_capture(win)
 
             pad = 10
-            frame = tk.Frame(win, bg="#1a1a2e", padx=pad, pady=pad)
+            frame = tk.Frame(win, bg="#ffffff", padx=pad, pady=pad)
             frame.pack(fill="both", expand=True)
 
-            header = tk.Frame(frame, bg="#1a1a2e")
+            header = tk.Frame(frame, bg="#ffffff")
             header.pack(fill="x")
 
             tk.Label(
                 header, text=title,
-                bg="#1a1a2e", fg="#7aa2f7",
+                bg="#ffffff", fg="#1a56a0",
                 font=("Segoe UI", 9, "bold"),
                 anchor="w", justify="left"
             ).pack(side="left", fill="x", expand=True)
 
             close_btn = tk.Label(
                 header, text=" × ",
-                bg="#1a1a2e", fg="#565f89",
+                bg="#ffffff", fg="#555555",
                 font=("Segoe UI", 8),
                 cursor="hand2",
             )
             close_btn.pack(side="right")
 
-            msg = message if len(message) <= 350 else message[:347] + "..."
+            msg = message if len(message) <= 600 else message[:597] + "..."
             tk.Label(
                 frame, text=msg,
-                bg="#1a1a2e", fg="#a9b1d6",
+                bg="#ffffff", fg="#1a1a1a",
                 font=("Segoe UI", 8),
                 anchor="w", justify="left",
-                wraplength=280
+                wraplength=380
             ).pack(fill="x", pady=(4, 0))
 
             win.update_idletasks()
-            w = max(win.winfo_reqwidth(), 280)
+            w = max(win.winfo_reqwidth(), 380)
             h = win.winfo_reqheight()
             sw = win.winfo_screenwidth()
             sh = win.winfo_screenheight()
@@ -253,7 +254,7 @@ def show_popup(_tray_icon, title: str, message: str, duration_ms: int = POPUP_DU
                 if step >= POPUP_FADE_STEPS:
                     close()
                     return
-                alpha = 0.85 * (1 - step / POPUP_FADE_STEPS)
+                alpha = 0.55 * (1 - step / POPUP_FADE_STEPS)
                 try:
                     win.attributes("-alpha", alpha)
                     win.after(POPUP_FADE_MS, fade_out, step + 1)
@@ -275,9 +276,46 @@ import re as _re
 
 class AIEngine:
     def __init__(self, config: dict):
-        self.config  = config
-        self._model  = None       # untuk Gemini
-        self._client = None       # untuk OpenAI
+        self.config    = config
+        self._model    = None       # untuk Gemini
+        self._client   = None       # untuk OpenAI
+        self._key_index = 0         # index key aktif saat ini
+
+    # ------------------------------------------------------------------
+    # API Key rotation
+    # ------------------------------------------------------------------
+    def _all_keys(self) -> list[str]:
+        """Kembalikan semua API key yang tersedia (api_keys list + api_key legacy)."""
+        keys = [k.strip() for k in self.config.get("api_keys", []) if k.strip()]
+        legacy = self.config.get("api_key", "").strip()
+        if legacy and legacy not in keys:
+            keys.append(legacy)
+        return keys
+
+    def _get_active_key(self) -> str:
+        """Kembalikan key aktif saat ini."""
+        keys = self._all_keys()
+        if not keys:
+            raise EnvironmentError("API Key belum diset! Buka Settings di tray.")
+        self._key_index = self._key_index % len(keys)
+        return keys[self._key_index]
+
+    def _rotate_key(self, failed_key: str) -> bool:
+        """
+        Pindah ke key berikutnya. Return True jika ada key lain, False jika sudah habis semua.
+        """
+        keys = self._all_keys()
+        if len(keys) <= 1:
+            return False
+        self._key_index = (self._key_index + 1) % len(keys)
+        next_key = keys[self._key_index]
+        if next_key == failed_key:
+            return False  # sudah muter balik ke key yang sama — semua habis
+        log.warning(f"[KEY ROTATE] Key ...{failed_key[-6:]} habis quota, pindah ke ...{next_key[-6:]}")
+        # Reset model/client agar pakai key baru
+        self._model  = None
+        self._client = None
+        return True
 
     @property
     def provider(self) -> str:
@@ -291,9 +329,7 @@ class AIEngine:
     def _get_gemini_model(self):
         if self._model is None:
             import google.generativeai as genai
-            api_key = self.config.get("api_key", "").strip()
-            if not api_key:
-                raise EnvironmentError("API Key belum diset! Buka Settings di tray.")
+            api_key = self._get_active_key()
             genai.configure(api_key=api_key)
             system_prompt = _load_prompt_from_file()
             if not system_prompt:
@@ -310,9 +346,7 @@ class AIEngine:
     def _get_openai_client(self):
         if self._client is None:
             from openai import OpenAI
-            api_key = self.config.get("api_key", "").strip()
-            if not api_key:
-                raise EnvironmentError("API Key belum diset! Buka Settings di tray.")
+            api_key = self._get_active_key()
             self._client = OpenAI(api_key=api_key)
         return self._client
 
@@ -336,15 +370,17 @@ class AIEngine:
                 snip_root = tk.Tk()
                 snip_root.attributes("-fullscreen", True)
                 snip_root.attributes("-topmost", True)
-                snip_root.attributes("-alpha", 0.15)
-                snip_root.configure(bg="black")
+                # alpha 0.01 + bg putih = hampir invisible tapi mouse event tetap berfungsi
+                # (transparentcolor TIDAK dipakai karena membuat area jadi click-through)
+                snip_root.attributes("-alpha", 0.01)
+                snip_root.configure(bg="white")
                 snip_root.config(cursor="crosshair")
 
                 # Anti-capture: overlay invisible dari recording
                 snip_root.update_idletasks()
                 _hide_from_capture(snip_root)
 
-                canvas = tk.Canvas(snip_root, bg="black", highlightthickness=0)
+                canvas = tk.Canvas(snip_root, bg="white", highlightthickness=0)
                 canvas.pack(fill="both", expand=True)
 
                 start   = {"x": 0, "y": 0}
@@ -357,7 +393,7 @@ class AIEngine:
                         canvas.delete(rect_id[0])
                     rect_id[0] = canvas.create_rectangle(
                         event.x, event.y, event.x, event.y,
-                        outline="#89b4fa", width=2
+                        outline="#89b4fa", fill="", width=2
                     )
 
                 def on_drag(event):
@@ -374,16 +410,30 @@ class AIEngine:
                     y1 = min(start["y"], event.y_root)
                     x2 = max(start["x"], event.x_root)
                     y2 = max(start["y"], event.y_root)
-                    snip_root.destroy()
 
                     if (x2 - x1) < 20 or (y2 - y1) < 20:
+                        snip_root.destroy()
                         log.info("Area terlalu kecil, batal capture.")
                         return
 
-                    # Tunggu overlay benar-benar hilang dari layar
-                    time.sleep(0.5)
+                    # Sembunyikan overlay DULU sebelum destroy
+                    # sehingga layar kembali bersih sebelum screenshot diambil
+                    try:
+                        snip_root.attributes("-alpha", 0.0)  # invisible total
+                        snip_root.withdraw()                  # hilangkan dari taskbar & compositor
+                        snip_root.update()                    # paksa Tk flush ke GPU
+                    except Exception:
+                        pass
 
-                    with mss.MSS() as sct:
+                    # Tunggu Windows GPU compositor benar-benar flush layar
+                    time.sleep(0.4)
+
+                    try:
+                        snip_root.destroy()
+                    except Exception:
+                        pass
+
+                    with mss.mss() as sct:
                         region = {"left": x1, "top": y1,
                                   "width": x2 - x1, "height": y2 - y1}
                         shot = sct.grab(region)
@@ -433,9 +483,30 @@ class AIEngine:
         return result["b64"]
 
     def ask(self, image_b64: str) -> dict:
-        if self.provider == "openai":
-            return self._ask_openai(image_b64)
-        return self._ask_gemini(image_b64)
+        """Kirim ke AI dengan auto-rotate key jika quota habis."""
+        keys = self._all_keys()
+        if not keys:
+            raise EnvironmentError("API Key belum diset! Buka Settings di tray.")
+
+        # Coba maksimal sebanyak jumlah key yang tersedia
+        for attempt in range(len(keys)):
+            used_key = self._get_active_key()
+            try:
+                if self.provider == "openai":
+                    return self._ask_openai(image_b64)
+                return self._ask_gemini(image_b64)
+            except Exception as e:
+                err_str = str(e).lower()
+                is_quota = any(kw in err_str for kw in [
+                    "quota", "rate", "429", "resource_exhausted",
+                    "limit", "exceeded", "exhausted"
+                ])
+                if is_quota and self._rotate_key(used_key):
+                    log.warning(f"[KEY ROTATE] Percobaan {attempt+1}: key habis, coba key berikutnya.")
+                    continue
+                raise  # error bukan quota, lempar ke atas
+
+        raise EnvironmentError("Semua API key telah habis quota. Tambah key baru di Settings.")
 
     def _ask_gemini(self, image_b64: str) -> dict:
         model       = self._get_gemini_model()
@@ -464,78 +535,170 @@ class AIEngine:
                     }}
                 ]}
             ],
-            max_tokens=1024,
+            max_tokens=2048,
         )
         return self._parse(response.choices[0].message.content.strip())
 
     @staticmethod
     def _parse(raw: str) -> dict:
         """
-        Parse output format dari prompt CEH v13.
-        Mencari:
-        - '✅ [LETTER]' untuk jawaban
-        - '### Confidence Level' untuk confidence
-        - Teks opsi jawaban yang benar dari '### Option Analysis'
-        - '### Why This Answer Is Correct' untuk penjelasan
+        Parse output format dari prompt Informatika SMA.
+        Deteksi tipe soal (PG / ESSAY) lalu parse sesuai format.
+        Memiliki banyak fallback agar tidak mudah gagal detect.
         """
         try:
-            # Cari jawaban: baris yang mengandung ✅ diikuti huruf A-D
-            answer = "?"
-            match = _re.search(r"✅\s*([A-Da-d])", raw)
-            if match:
-                answer = match.group(1).upper()
+            log.info(f"[RAW AI]\n{raw[:800]}")
 
-            # Cari confidence level
+            # --- Deteksi tipe soal ---
+            q_type = "pg"  # default
+            type_match = _re.search(r"TYPE:\s*(PG|ESSAY)", raw, _re.IGNORECASE)
+            if type_match:
+                q_type = type_match.group(1).upper()
+                q_type = "essay" if q_type == "ESSAY" else "pg"
+
+            # --- Confidence level ---
             confidence = ""
             conf_match = _re.search(
-                r"###\s*Confidence Level\s*\n\s*(High|Medium|Low)",
+                r"###\s*Tingkat Keyakinan\s*[\r\n]+\s*\**\s*(Tinggi|Sedang|Rendah|High|Medium|Low)\**",
                 raw, _re.IGNORECASE
             )
             if conf_match:
                 confidence = conf_match.group(1).strip()
 
-            # Cari teks opsi jawaban dari Option Analysis section
-            option_text = ""
-            if answer in ("A", "B", "C", "D"):
-                # Cari di dalam section Option Analysis
-                opt_section = _re.search(
-                    r"###\s*Option Analysis\s*\n(.+?)(?:\n###|\n====|$)",
-                    raw, _re.DOTALL
-                )
-                search_text = opt_section.group(1) if opt_section else raw
-
-                # Pattern: huruf jawaban diikuti titik/paren lalu teks
-                opt_match = _re.search(
-                    rf"^\s*\**{answer}[.):]\**\s*(.+?)$",
-                    search_text, _re.MULTILINE
-                )
-                if opt_match:
-                    text = opt_match.group(1).strip()
-                    # Bersihkan emoji dan markdown bold
-                    text = _re.sub(r"[✔✅❌]", "", text).strip()
-                    text = _re.sub(r"\*+", "", text).strip()
-                    if text:
-                        option_text = text
-
-            # Cari penjelasan setelah "Why This Answer Is Correct"
-            explanation = ""
-            exp_match = _re.search(
-                r"###\s*Why This Answer Is Correct\s*\n(.+?)(?:\n###|\n====|$)",
+            # --- Konsep kunci ---
+            key_concept = ""
+            kc_match = _re.search(
+                r"###\s*Konsep Kunci\s*[\r\n]+(.+?)(?:\n###|\n====|$)",
                 raw, _re.DOTALL
             )
-            if exp_match:
-                explanation = exp_match.group(1).strip()
-                if len(explanation) > 250:
-                    explanation = explanation[:247] + "..."
+            if kc_match:
+                key_concept = kc_match.group(1).strip()
+                if len(key_concept) > 100:
+                    key_concept = key_concept[:97] + "..."
 
-            return {
-                "answer":      answer,
-                "option_text": option_text,
-                "confidence":  confidence,
-                "explanation": explanation,
-            }
+            if q_type == "essay":
+                # --- Parse ESSAY ---
+                essay_answer = ""
+                ea_match = _re.search(
+                    r"###\s*Jawaban Essay\s*[\r\n]+(.+?)(?:\n###|\n====|$)",
+                    raw, _re.DOTALL
+                )
+                if ea_match:
+                    essay_answer = ea_match.group(1).strip()
+                    if len(essay_answer) > 500:
+                        essay_answer = essay_answer[:497] + "..."
+
+                # Poin kunci
+                key_points = ""
+                kp_match = _re.search(
+                    r"###\s*Poin Kunci\s*[\r\n]+(.+?)(?:\n###|\n====|$)",
+                    raw, _re.DOTALL
+                )
+                if kp_match:
+                    key_points = kp_match.group(1).strip()
+                    if len(key_points) > 200:
+                        key_points = key_points[:197] + "..."
+
+                return {
+                    "type":         "essay",
+                    "answer":       "",
+                    "option_text":  "",
+                    "confidence":   confidence,
+                    "explanation":  essay_answer,
+                    "key_points":   key_points,
+                    "key_concept":  key_concept,
+                }
+
+            else:
+                # --- Parse PG (Pilihan Ganda) ---
+                # Banyak pola fallback untuk mendeteksi jawaban
+                answer = "?"
+                PATTERNS = [
+                    r"[✅✔]\s*\**([A-Ea-e])\**[.):]?",          # ✅ A  /  ✅ **A**
+                    r"\**([A-Ea-e])\**\s*[✅✔]",               # A ✅  / **A** ✅
+                    r"###\s*Jawaban Benar[^\n]*\n\s*[✅✔]?\s*\**([A-Ea-e])\**",  # ### Jawaban Benar\n A
+                    r"(?:Jawaban(?:\s+[Bb]enar)?|Answer)\s*[:：]\s*\**([A-Ea-e])\**",  # Jawaban: A
+                    r"(?:Pilihan|Opsi|Option)\s+(?:yang\s+)?(?:benar|tepat|correct)\s*[:：]?\s*\**([A-Ea-e])\**",
+                    r"^\s*([A-Ea-e])[.):]\s*(?:[✅✔]|Benar|Correct)",  # A. ✅ atau A. Benar
+                ]
+                for pat in PATTERNS:
+                    m = _re.search(pat, raw, _re.IGNORECASE | _re.MULTILINE)
+                    if m:
+                        answer = m.group(1).upper()
+                        log.info(f"[PARSE] Jawaban ditemukan via pola: {pat!r} → {answer}")
+                        break
+
+                # Fallback: soal PG tanpa label huruf — AI menjawab angka 1/2/3/4/5
+                # konversi ke huruf A/B/C/D/E
+                if answer == "?":
+                    NUM_MAP = {"1": "A", "2": "B", "3": "C", "4": "D", "5": "E"}
+                    NUM_PATTERNS = [
+                        r"[✅✔]\s*\**([1-5])\**[.:]?",
+                        r"\**([1-5])\**\s*[✅✔]",
+                        r"###\s*Jawaban Benar[^\n]*\n\s*[✅✔]?\s*\**([1-5])\**",
+                        r"(?:Jawaban(?:\s+[Bb]enar)?|Answer)\s*[:：]\s*\**([1-5])\**",
+                        r"^\s*([1-5])[.:)]\s*(?:[✅✔]|Benar|Correct)",
+                    ]
+                    for pat in NUM_PATTERNS:
+                        m = _re.search(pat, raw, _re.IGNORECASE | _re.MULTILINE)
+                        if m:
+                            answer = NUM_MAP.get(m.group(1), "?")
+                            log.info(f"[PARSE] Jawaban angka → huruf: {m.group(1)} → {answer}")
+                            break
+
+                # Cari teks opsi jawaban dari Analisis Opsi section
+                option_text = ""
+                if answer in ("A", "B", "C", "D", "E"):
+                    opt_section = _re.search(
+                        r"###\s*Analisis Opsi\s*[\r\n]+(.+?)(?:\n###|\n====|$)",
+                        raw, _re.DOTALL
+                    )
+                    search_text = opt_section.group(1) if opt_section else raw
+
+                    opt_match = _re.search(
+                        rf"^\s*\**{answer}[.):]\**\s*(.+?)$",
+                        search_text, _re.MULTILINE
+                    )
+                    if opt_match:
+                        text = opt_match.group(1).strip()
+                        text = _re.sub(r"[✔✅❌]", "", text).strip()
+                        text = _re.sub(r"\*+", "", text).strip()
+                        if text:
+                            option_text = text
+
+                # Cari penjelasan
+                explanation = ""
+                exp_match = _re.search(
+                    r"###\s*Mengapa Jawaban Ini Benar\s*[\r\n]+(.+?)(?:\n###|\n====|$)",
+                    raw, _re.DOTALL
+                )
+                if exp_match:
+                    explanation = exp_match.group(1).strip()
+                    if len(explanation) > 300:
+                        explanation = explanation[:297] + "..."
+
+                # Fallback: jika jawaban tidak terdeteksi sama sekali,
+                # tampilkan raw response 400 karakter pertama agar user tetap dapat info
+                if answer == "?" and not explanation:
+                    explanation = raw.strip()[:400]
+                    log.warning("[PARSE] Tidak ada jawaban terdeteksi, tampilkan raw response.")
+
+                return {
+                    "type":         "pg",
+                    "answer":       answer,
+                    "option_text":  option_text,
+                    "confidence":   confidence,
+                    "explanation":  explanation,
+                    "key_points":   "",
+                    "key_concept":  key_concept,
+                }
+
         except Exception:
-            return {"answer": "?", "option_text": "", "confidence": "", "explanation": ""}
+            return {
+                "type": "pg", "answer": "?", "option_text": "",
+                "confidence": "", "explanation": "",
+                "key_points": "", "key_concept": "",
+            }
 
 
 # ---------------------------------------------------------------------------
@@ -584,8 +747,8 @@ def make_tray_image() -> PILImage.Image:
 # ---------------------------------------------------------------------------
 # Capture Service (Manual Only)
 # ---------------------------------------------------------------------------
-RATE_LIMIT_MAX   = 2        # max request per window
-RATE_LIMIT_WINDOW = 60      # window dalam detik
+RATE_LIMIT_MAX   = 4        # max request per window
+RATE_LIMIT_WINDOW = 30      # window dalam detik
 
 class CaptureService:
     def __init__(self, engine: AIEngine, config: dict, tray_ref):
@@ -665,45 +828,68 @@ class CaptureService:
             # Tampilkan popup loading
             self._notify(
                 "⏳ Memproses...",
-                "Mengirim screenshot ke Gemini AI.\nHarap tunggu beberapa detik...",
+                "Mengirim screenshot ke AI.\nHarap tunggu beberapa detik...",
                 duration_ms=30000  # akan diganti oleh popup hasil
             )
-            log.info("Mengirim ke Gemini...")
+            log.info("Mengirim ke AI...")
             self._requests.append(time.time())  # catat timestamp request
             result = self.engine.ask(img_b64)
 
+            q_type      = result.get("type", "pg")
             answer      = result.get("answer", "?")
             option_text = result.get("option_text", "")
             confidence  = result.get("confidence", "")
             explanation = result.get("explanation", "")
+            key_points  = result.get("key_points", "")
+            key_concept = result.get("key_concept", "")
 
-            log.info(f"Hasil → answer={answer} | confidence={confidence} | option={option_text!r}")
+            log.info(f"Hasil → type={q_type} | answer={answer} | confidence={confidence}")
 
-            if answer in ("A", "B", "C", "D"):
-                # Emoji confidence
-                conf_emoji = {
-                    "High":   "\U0001f60e High",
-                    "Medium": "\U0001f914 Medium",
-                    "Low":    "\U0001f628 Low",
-                }.get(confidence, confidence)
-                conf_tag = f" | {conf_emoji}" if confidence else ""
-                title = f"✅ Jawaban: {answer}{conf_tag}"
+            # --- Emoji confidence (support Bahasa Indonesia & English) ---
+            _conf_map = {
+                "Tinggi": "\U0001f60e Tinggi",
+                "High":   "\U0001f60e Tinggi",
+                "Sedang": "\U0001f914 Sedang",
+                "Medium": "\U0001f914 Sedang",
+                "Rendah": "\U0001f628 Rendah",
+                "Low":    "\U0001f628 Rendah",
+            }
+            conf_emoji = _conf_map.get(confidence, confidence)
+            conf_tag = f" | {conf_emoji}" if confidence else ""
 
-                # Body: teks opsi + penjelasan
-                parts = []
-                if option_text:
-                    parts.append(f"{answer}. {option_text}")
+            if q_type == "essay":
+                # --- ESSAY ---
                 if explanation:
-                    parts.append(f"\n{explanation}")
-                body = "\n".join(parts) if parts else "Jawaban ditemukan."
+                    title = f"📝 Jawaban Essay{conf_tag}"
+                    parts = [explanation]
+                    if key_points:
+                        parts.append(f"\n📌 Poin Kunci:\n{key_points}")
+                    if key_concept:
+                        parts.append(f"\n🔑 {key_concept}")
+                    body = "\n".join(parts)
+                    self._notify(title, body, duration_ms=25000)
+                    log.info("Essay jawaban ditampilkan.")
+                else:
+                    self._notify(
+                        "❌ Soal Essay Tidak Terbaca",
+                        "Soal essay tidak terbaca dengan jelas.\n"
+                        "Coba capture ulang dengan area yang lebih besar.",
+                        duration_ms=8000
+                    )
+
+            elif q_type == "pg" and answer in ("A", "B", "C", "D", "E"):
+                # --- PILIHAN GANDA --- to the point: jawaban + teks opsi saja
+                title = f"✅ Jawaban: {answer}{conf_tag}"
+                body = f"{answer}. {option_text}" if option_text else f"Jawaban: {answer}"
                 self._notify(title, body)
+                log.info(f"PG jawaban: {answer}")
 
             elif answer == "?":
                 log.info("Soal tidak terdeteksi / tidak lengkap.")
                 self._notify(
                     "❌ Tidak Ada Soal",
-                    "Tidak ada soal pilihan ganda yang terdeteksi pada area yang di-capture.\n"
-                    "Pastikan area yang dipilih mencakup soal lengkap beserta pilihan jawabannya.",
+                    "Tidak ada soal yang terdeteksi pada area yang di-capture.\n"
+                    "Pastikan area yang dipilih mencakup soal lengkap.",
                     duration_ms=8000
                 )
             else:
